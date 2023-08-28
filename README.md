@@ -1,3 +1,8 @@
 # Networking-course
-laboratory code, works and practice
-![alt text](./images/Internet-Mundial.jpg "Internet")
+Laboratory code, works and practice
+
+
+<p align="center">
+    <img src="./images/Internet-Mundial.jpg" alt="Internet">
+</p>
+
