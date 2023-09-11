@@ -39,6 +39,10 @@ std::string sendInitNotification()
 {
     char buffer[256];
 
+    std::cout << "list -> list users in server\n";
+    std::cout << "all, message -> send message to all users in server\n";
+    std::cout << "nickname, message -> send message to specific user\n";
+    std::cout << "quit -> exit of service\n";
 
     std::cout << "Input the Nickname: ";
     
@@ -124,6 +128,41 @@ void obtainingMessage()
     std::cout << "\n" << source << " : "<< message << std::endl;
 }
 
+void obtainingMessageDifusion()
+{
+
+    char buffer[256];
+    int nBytes;
+
+    // source client data
+    nBytes = recv(SocketFD, buffer, 2, 0);
+
+    buffer[nBytes] = '\0';
+
+    int size = atoi(buffer);
+
+    nBytes = recv(SocketFD, buffer, size, 0);
+
+    buffer[nBytes] = '\0';
+
+    std::string source = buffer;
+
+    // message of client
+
+    nBytes = recv(SocketFD, buffer, 3, 0);
+
+    buffer[nBytes] = '\0';
+
+    size = atoi(buffer);
+
+    nBytes = recv(SocketFD, buffer, size, 0);
+
+    buffer[nBytes] = '\0';
+    std::string message = buffer;
+
+    std::cout << "\n" << source << " : "<< message << std::endl;
+}
+
 void ReceiveMessages() {
 
     char buffer[2];
@@ -142,8 +181,10 @@ void ReceiveMessages() {
 
         if(buffer[0] == 'l')
             getListUsers();
-        else if(buffer[0] == 'w')
+        else if(buffer[0] == 'm')
             obtainingMessage();
+        else if(buffer[0] == 'w')
+            obtainingMessageDifusion();
 
     }
 }
@@ -173,16 +214,28 @@ void sendMessage(std::string message)
     
     size_t pos = message.find(",");
     
-    if (pos == std::string::npos) 
+    if (pos == std::string::npos)   
+    {
         return;
+    } 
+    else
+    {
+        std::string destination = message.substr(0, pos);
+        std::string content = message.substr(pos + 2); 
 
-    std::string destination = message.substr(0, pos);
-    std::string content = message.substr(pos + 2); 
 
-    payload = "m"+completeByteSize(destination.size(), 2) + destination +  completeByteSize(content.size(), 3) + content; 
+        if(destination == "all")
+        {
+            payload = "w"+completeByteSize(content.size(), 3) + content; 
+        }
+        else{
+            payload = "m"+completeByteSize(destination.size(), 2) + destination +  completeByteSize(content.size(), 3) + content; 
 
-    // std::cout << "payload :" <<payload<< std::endl;
-    send(SocketFD, payload.c_str(), payload.size(), 0);
+            // std::cout << "payload :" <<payload<< std::endl;
+        }
+        send(SocketFD, payload.c_str(), payload.size(), 0);
+    }
+
 }
 
 int main(int argc, char *argv[]) {
