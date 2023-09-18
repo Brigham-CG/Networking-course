@@ -22,7 +22,6 @@ std::string completeByteSize(int number, int size)
 {
     std::string returnNumber = std::to_string(number);
     
-
     if(returnNumber.size() < size)
     {
         int n = size - returnNumber.size();
@@ -34,21 +33,12 @@ std::string completeByteSize(int number, int size)
     return returnNumber;
 }
 
-
 std::string sendInitNotification()
 {
-    char buffer[256];
-
-    std::cout << "list -> list users in server\n";
-    std::cout << "all, message -> send message to all users in server\n";
-    std::cout << "nickname, message -> send message to specific user\n";
-    std::cout << "quit -> exit of service\n";
-
-    std::cout << "Input the Nickname: ";
     
     std::getline(std::cin, nickname);
 
-    std::string notificationData = "n" + completeByteSize(nickname.size(), 2) + nickname;
+    std::string notificationData = "N" + completeByteSize(nickname.size(), 2) + nickname;
 
     // Enviar el nickname al servidor
     
@@ -60,25 +50,29 @@ std::string sendInitNotification()
 void getListUsers()
 {
 
-    char buffer[256];
+    //size of list
+    char size_list[4];
     int nBytes;
 
-    nBytes = recv(SocketFD, buffer, 3, 0);
+    nBytes = recv(SocketFD, size_list, 3, 0);
 
-    buffer[nBytes] = '\0';
+    size_list[nBytes] = '\0';
 
-    int sizeList = atoi(buffer);
+    int sizeList = atoi(size_list);
 
-    nBytes = recv(SocketFD, buffer, sizeList, 0);
+    // list 
+    char list[sizeList + 1];
 
-    buffer[nBytes] = '\0';
+    nBytes = recv(SocketFD, list, sizeList, 0);
+
+    list[nBytes] = '\0';
 
     const char delimiter[] = ","; 
 
     std::string listaNombres;
 
     // Usar strtok para dividir la cadena en tokens
-    char *token = std::strtok(buffer, delimiter);
+    char *token = std::strtok(list, delimiter);
 
     while (token != nullptr) {
         listaNombres += " * ";
@@ -96,69 +90,38 @@ void getListUsers()
 void obtainingMessage()
 {
 
-    char buffer[256];
+    char size_source[3];
+
     int nBytes;
 
     // source client data
-    nBytes = recv(SocketFD, buffer, 2, 0);
+    nBytes = recv(SocketFD, size_source, 2, 0);
 
-    buffer[nBytes] = '\0';
+    size_source[nBytes] = '\0';
 
-    int size = atoi(buffer);
+    int sizeSource = atoi(size_source);
 
-    nBytes = recv(SocketFD, buffer, size, 0);
+    char source[sizeSource + 1];
 
-    buffer[nBytes] = '\0';
+    nBytes = recv(SocketFD, source, sizeSource, 0);
 
-    std::string source = buffer;
-
-    // message of client
-
-    nBytes = recv(SocketFD, buffer, 3, 0);
-
-    buffer[nBytes] = '\0';
-
-    size = atoi(buffer);
-
-    nBytes = recv(SocketFD, buffer, size, 0);
-
-    buffer[nBytes] = '\0';
-    std::string message = buffer;
-
-    std::cout << "\n" << source << " : "<< message << std::endl;
-}
-
-void obtainingMessageDifusion()
-{
-
-    char buffer[256];
-    int nBytes;
-
-    // source client data
-    nBytes = recv(SocketFD, buffer, 2, 0);
-
-    buffer[nBytes] = '\0';
-
-    int size = atoi(buffer);
-
-    nBytes = recv(SocketFD, buffer, size, 0);
-
-    buffer[nBytes] = '\0';
-
-    std::string source = buffer;
+    source[nBytes] = '\0';
 
     // message of client
 
-    nBytes = recv(SocketFD, buffer, 3, 0);
+    char size_msg[4]; 
 
-    buffer[nBytes] = '\0';
+    nBytes = recv(SocketFD, size_msg, 3, 0);
 
-    size = atoi(buffer);
+    size_msg[nBytes] = '\0';
 
-    nBytes = recv(SocketFD, buffer, size, 0);
+    int sizeMsg = atoi(size_msg);
 
-    buffer[nBytes] = '\0';
-    std::string message = buffer;
+    char message[sizeMsg + 1];
+
+    nBytes = recv(SocketFD, message, sizeMsg, 0);
+
+    message[nBytes] = '\0';
 
     std::cout << "\n" << source << " : "<< message << std::endl;
 }
@@ -179,13 +142,10 @@ void ReceiveMessages() {
         
         buffer[nBytes] = '\0';
 
-        if(buffer[0] == 'l')
+        if(buffer[0] == 'L')
             getListUsers();
-        else if(buffer[0] == 'm')
+        else if(buffer[0] == 'M')
             obtainingMessage();
-        else if(buffer[0] == 'w')
-            obtainingMessageDifusion();
-
     }
 }
 
@@ -193,15 +153,14 @@ void ReceiveMessages() {
 
 void reqListName()
 {
-    char buffer[4] = "l";
+    char buffer[4] = "L00";
 
     send(SocketFD, buffer, 3, 0);
-
 }
 
 void quitServer()
 {
-    char buffer[4] = "q";
+    char buffer[4] = "Q00";
 
     send(SocketFD, buffer, 3, 0);
     std::cout << "[*] Session Closed\n";
@@ -217,28 +176,32 @@ void sendMessage(std::string message)
     if (pos == std::string::npos)   
     {
         return;
-    } 
+    }
     else
     {
         std::string destination = message.substr(0, pos);
         std::string content = message.substr(pos + 2); 
 
-
         if(destination == "all")
         {
-            payload = "w"+completeByteSize(content.size(), 3) + content; 
+            payload = "W"+completeByteSize(content.size(), 3) + content; 
         }
         else{
-            payload = "m"+completeByteSize(destination.size(), 2) + destination +  completeByteSize(content.size(), 3) + content; 
-
-            // std::cout << "payload :" <<payload<< std::endl;
+            payload = "M"+completeByteSize(destination.size(), 2) + destination +  completeByteSize(content.size(), 3) + content; 
         }
+
+        std::cout << "payload :" << payload<< std::endl;
         send(SocketFD, payload.c_str(), payload.size(), 0);
     }
-
 }
 
 int main(int argc, char *argv[]) {
+
+    if(argc != 3)
+     {
+        perror("[!] Debes de pasar la 'direccion ip' del puerto y el 'numero del puerto' como parametros");
+        perror("[!] Ejemplo: ./client 127.0.0.1 54001");
+    }
 
     struct sockaddr_in stSockAddr;
 
@@ -258,6 +221,13 @@ int main(int argc, char *argv[]) {
         close(SocketFD);
         exit(1);
     }
+
+    std::cout << "list --------------> list users in server\n";
+    std::cout << "all, message ------> send message to all users in server\n";
+    std::cout << "nickname, message -> send message to specific user\n";
+    std::cout << "quit --------------> exit of service\n";
+
+    std::cout << "Input the Nickname: ";
 
     sendInitNotification();
 

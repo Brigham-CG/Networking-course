@@ -32,38 +32,29 @@ std::map<std::string, int> clientNicknames;
 
 std::string initNotification(int clientSocket)
 {
-    char buffer[255];
+    // size nickname
+    char size_nick[3];
     int nBytes = 0;
 
-    nBytes = recv(clientSocket, buffer, 2, 0);
+    nBytes = recv(clientSocket, size_nick, 2, 0);
 
-    buffer[nBytes] = '\0';
+    size_nick[nBytes] = '\0';
 
-    int nicknameSize = atoi(buffer);
+    int sizeNick = atoi(size_nick);
 
-    std::cout << nicknameSize << std::endl;
+    // nickname
 
-    if (nicknameSize < 1 || nicknameSize > 255) {
-        close(clientSocket);
-        std::cout << "[!] Error in size of"<< std::endl;
-        return "nothing";
-    }
+    char nickname[sizeNick + 1];
 
-    nBytes = recv(clientSocket, buffer, nicknameSize, 0);
+    nBytes = recv(clientSocket, nickname, sizeNick, 0);
 
-    buffer[nBytes] = '\0';
-
-    if (nBytes <= 0) {
-        close(clientSocket);
-        return "nothing";
-    }
-
-    std::string nickname = buffer;
+    nickname[nBytes] = '\0';
 
     // Asociar el nickname con el descriptor de archivo
     clientNicknames[nickname] = clientSocket;
 
     std::cout << "[+] Client '" << nickname << "' connected.\n";
+
     return nickname;
 }
 
@@ -80,64 +71,108 @@ void getListUsers(int clientSocket)
     
     nickNamesConcat.pop_back();
 
-    std::string data = "l" + completeByteSize(nickNamesConcat.size(), 3) + nickNamesConcat;
+    std::string data = "L" + completeByteSize(nickNamesConcat.size(), 3) + nickNamesConcat;
 
-    std::cout << "'" << data <<"'\n";
+    std::cout << "sendList:'" << data <<"'\n";
 
     send(clientSocket, data.c_str(), data.size(), 0);
 
-    std::cout << "[+] List of clinents sended\n";
-
+    std::cout << "[+] List of clients sended\n";
 }
 
 void forwardMessage(int clientSocket, std::string nickName)
 {
 
-    char buffer[255];
+    // obtaining destination data 
+    char size_destination[3];
     int nBytes = 0;
 
-    nBytes = recv(clientSocket, buffer, 2, 0);
+    nBytes = recv(clientSocket, size_destination, 2, 0);
 
     if (nBytes <= 0) {
         std::cout << "[+] Client disconnected.\n";
         return;
     }
 
-    buffer[nBytes] = '\0';
-    // obtaining destination data 
+    size_destination[nBytes] = '\0';
 
-    int destNicknameSize = atoi(buffer);
+    int sizeDest = atoi(size_destination);
 
-    nBytes = recv(clientSocket, buffer, destNicknameSize, 0);
+    char destination[sizeDest + 1];
 
-    buffer[nBytes] = '\0';
+    nBytes = recv(clientSocket, destination, sizeDest, 0);
 
-    std::string destNickName = buffer;
+    destination[nBytes] = '\0';
 
     // obtaining destination message;
     
-    nBytes = recv(clientSocket, buffer, 3, 0);
+    char size_msg[4];
 
-    buffer[nBytes] = '\0';
+    nBytes = recv(clientSocket, size_msg, 3, 0);
 
-    int destMsgSize = atoi(buffer);
+    size_msg[nBytes] = '\0';
+
+    int sizeMsg = atoi(size_msg);
     
-    nBytes = recv(clientSocket, buffer, destMsgSize, 0);
-    
-    buffer[nBytes] = '\0';
+    char message[sizeMsg];
 
-    std::string message = buffer;
+    nBytes = recv(clientSocket, message, sizeMsg, 0);
+
+    message[nBytes] = '\0';
 
     // forward message
 
     std::string forwardData;
 
-    forwardData = "w" + completeByteSize(nickName.size(), 2) + nickName + completeByteSize(message.size(), 3) + message;
+    forwardData = "M" + completeByteSize(nickName.size(), 2) + nickName + completeByteSize(sizeMsg, 3) + message;
 
-    send(clientNicknames[destNickName], forwardData.c_str(), forwardData.size(), 0);
+    std::cout << "unicast message:'" << forwardData << "'\n";
+
+    send(clientNicknames[destination], forwardData.c_str(), forwardData.size(), 0);
 
     std::cout << "[+] Forward message\n";
 }
+
+void forwardDiffusionMessage(int clientSocket, std::string nickName)
+{
+
+    int nBytes = 0;
+
+    // obtaining destination message
+    
+    char size_msg[4];
+
+    nBytes = recv(clientSocket, size_msg, 3, 0);
+
+    size_msg[nBytes] = '\0';
+
+    int sizeMsg = atoi(size_msg);
+    
+    char message[sizeMsg];
+
+    nBytes = recv(clientSocket, message, sizeMsg, 0);
+
+    message[nBytes] = '\0';
+
+    // forward message
+
+    std::string forwardData;
+
+    for(auto& destination: clientNicknames)
+    {
+        if(destination.first != nickName)
+        {
+            forwardData = "M" + completeByteSize(nickName.size(), 2) + nickName + completeByteSize(sizeMsg, 3) + message;
+
+            std::cout << "Diffusion message:'" << forwardData << "'\n";
+
+            send(destination.second, forwardData.c_str(), forwardData.size(), 0);
+        }
+    }
+
+    std::cout << "[+] Forward Diffusion message\n";
+}
+
 
 void closeSession(std::string nickName)
 {
@@ -170,24 +205,26 @@ void HandleClient(int clientSocket) {
         
         option[nBytes] = '\0';
 
-        // std::cout << "option: " << option <<std::endl;
+        std::cout << "option: " << option <<std::endl;
 
         if (nBytes <= 0) {
             close(clientSocket);
             return;
         }
 
-        if (option[0] == 'n')
+        if (option[0] == 'N')
         {
             nickName = initNotification(clientSocket);
             if (nickName == "nothing")
                 break;
         }
-        else if (option[0] == 'l')
+        else if (option[0] == 'L')
             getListUsers(clientSocket);
-        else if (option[0] == 'm')
+        else if (option[0] == 'M')
             forwardMessage(clientSocket, nickName);
-        else if (option[0] == 'q')
+        else if (option[0] == 'W')
+            forwardDiffusionMessage(clientSocket, nickName);
+        else if (option[0] == 'Q')
             closeSession(nickName);
     }
     
@@ -197,6 +234,14 @@ void HandleClient(int clientSocket) {
 }
 
 int main(int argc, char *argv[]) {
+
+
+    if(argc != 2)
+    {
+        perror("[!] Debes de pasar el 'numero del puerto' como parametro");
+        perror("[!] Ejemplo: ./server 54001");
+    }
+
     struct sockaddr_in stSockAddr;
     socklen_t client;
     int SocketFD;
@@ -232,7 +277,6 @@ int main(int argc, char *argv[]) {
             perror("[!] Error accepting connection");
             continue;
         }
-
         // Crear un nuevo hilo para manejar al cliente
         std::thread(HandleClient, ConnectFD).detach();
     }
