@@ -24,10 +24,10 @@
 
 // file 
 #include <fstream>
+#include <sys/stat.h>
 
 // hash 
 #include <openssl/sha.h>
-
 
 int SocketFD;
 std::string nickname;
@@ -48,21 +48,37 @@ std::string completeByteSize(int number, int size)
     return returnNumber;
 }
 
-std::string calculateSHA1(const std::string &input) {
+std::string calculateSHA1(unsigned char* data, int size, std::string timestamp) {
     unsigned char hash[SHA_DIGEST_LENGTH];
-    SHA1(reinterpret_cast<const unsigned char *>(input.c_str()), input.length(), hash);
-
-    // Convertir el resultado en una cadena hexadecimal
-    std::string resultado;
-    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
-        char hex[3];
-        snprintf(hex, sizeof(hex), "%02x", hash[i]);
-        resultado += hex;
+    SHA_CTX shaContext;
+    if (!SHA1_Init(&shaContext)) {
+        std::cerr << "Error al inicializar el contexto SHA-1." << std::endl;
+        return "";
+    }
+    
+    if (!SHA1_Update(&shaContext, data, size)) {
+        std::cerr << "Error al actualizar el contexto SHA-1 con datos." << std::endl;
+        return "";
     }
 
-    return resultado;
-}
+    if (!SHA1_Update(&shaContext, timestamp.c_str(), timestamp.size())) {
+        std::cerr << "Error al actualizar el contexto SHA-1 con la marca de tiempo." << std::endl;
+        return "";
+    }
 
+    if (!SHA1_Final(hash, &shaContext)) {
+        std::cerr << "Error al finalizar el cálculo del hash SHA-1." << std::endl;
+        return "";
+    }
+
+    // Convertir el resultado en una cadena hexadecimal
+    std::stringstream ss;
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(hash[i]);
+    }
+
+    return ss.str();
+}
 
 // response of server
 
@@ -70,7 +86,9 @@ std::string sendInitNotification()
 {
     std::cout << "Input the Nickname: ";
 
-    std::getline(std::cin, nickname);
+    // std::getline(std::cin, nickname);
+
+    nickname = "Brigham";
 
     std::string notificationData = "N" + completeByteSize(nickname.size(), 2) + nickname;
 
@@ -163,96 +181,96 @@ void obtainingMessage()
 void obtainingFile()
 {
 
-    char size_source[3];
+    // char size_source[3];
 
-    int nBytes;
+    // int nBytes;
 
-    // source client data
-    nBytes = recv(SocketFD, size_source, 2, 0);
+    // // source client data
+    // nBytes = recv(SocketFD, size_source, 2, 0);
 
-    size_source[nBytes] = '\0';
+    // size_source[nBytes] = '\0';
 
-    int sizeSource = atoi(size_source);
+    // int sizeSource = atoi(size_source);
 
-    char source[sizeSource + 1];
+    // char source[sizeSource + 1];
 
-    nBytes = recv(SocketFD, source, sizeSource, 0);
+    // nBytes = recv(SocketFD, source, sizeSource, 0);
 
-    source[nBytes] = '\0';
+    // source[nBytes] = '\0';
 
-    // file name of source client
+    // // file name of source client
 
-    char size_fileName[6]; 
+    // char size_fileName[6]; 
 
-    nBytes = recv(SocketFD, size_fileName, 5, 0);
+    // nBytes = recv(SocketFD, size_fileName, 5, 0);
 
-    size_fileName[nBytes] = '\0';
+    // size_fileName[nBytes] = '\0';
 
-    int sizeFilename = atoi(size_fileName);
+    // int sizeFilename = atoi(size_fileName);
 
-    char fileName[sizeFilename + 1];
+    // char fileName[sizeFilename + 1];
 
-    nBytes = recv(SocketFD, fileName, sizeFilename, 0);
+    // nBytes = recv(SocketFD, fileName, sizeFilename, 0);
 
-    fileName[nBytes] = '\0';
+    // fileName[nBytes] = '\0';
 
-    // file content
+    // // file content
 
-    char size_file[16];
+    // char size_file[16];
 
-    nBytes = recv(SocketFD, size_file, 15, 0);
+    // nBytes = recv(SocketFD, size_file, 15, 0);
 
-    size_file[nBytes] = '\0';
+    // size_file[nBytes] = '\0';
 
-    int sizeFile = atoi(size_file);
+    // int sizeFile = atoi(size_file);
 
-    char fileData[sizeFile + 1];
+    // char fileData[sizeFile + 1];
 
-    nBytes = recv(SocketFD, fileData, sizeFile, 0);
+    // nBytes = recv(SocketFD, fileData, sizeFile, 0);
 
-    fileData[nBytes] = '\0';
+    // fileData[nBytes] = '\0';
 
-    // hash camp
-    char hash[41];
+    // // hash camp
+    // char hash[41];
 
-    nBytes = recv(SocketFD, hash, 40, 0);
+    // nBytes = recv(SocketFD, hash, 40, 0);
 
-    hash[nBytes] = '\0';
+    // hash[nBytes] = '\0';
 
-    char timeStamp[15];
+    // char timeStamp[15];
 
-    nBytes = recv(SocketFD, timeStamp, 14, 0);
+    // nBytes = recv(SocketFD, timeStamp, 14, 0);
     
-    timeStamp[nBytes] = '\0';
+    // timeStamp[nBytes] = '\0';
 
-    std::string hash_tm;
+    // std::string hash_tm;
 
-    hash_tm += fileData;
-    hash_tm += timeStamp;
+    // hash_tm += fileData;
+    // hash_tm += timeStamp;
 
 
-    // std::cout << "hash: " << hash_tm << std::endl;
-    std::string result = calculateSHA1(hash_tm);
+    // // std::cout << "hash: " << hash_tm << std::endl;
+    // std::string result = calculateSHA1(hash_tm);
 
-    // std::cout << "hash: '" << hash <<  " hashtm: '" << hash_tm << std::endl;
+    // // std::cout << "hash: '" << hash <<  " hashtm: '" << hash_tm << std::endl;
 
-    if(strcmp(hash, result.c_str()) != 0)
-    {
-        std::cerr << "\n[!] La integridad del archivo esta corrupta" << std::endl;
-        return;
-    }
+    // if(strcmp(hash, result.c_str()) != 0)
+    // {
+    //     std::cerr << "\n[!] La integridad del archivo esta corrupta" << std::endl;
+    //     return;
+    // }
 
-    // saving file
-    std::ofstream archivo_escritura(fileName, std::ios::binary);
+    // // saving file
+    // std::ofstream archivo_escritura(fileName, std::ios::binary);
 
-    if (!archivo_escritura) {
-        std::cerr << "\n[!] No se pudo abrir el archivo de salida" << std::endl;
-        return;
-    }
+    // if (!archivo_escritura) {
+    //     std::cerr << "\n[!] No se pudo abrir el archivo de salida" << std::endl;
+    //     return;
+    // }
 
-    archivo_escritura.write(fileData, sizeFile);
+    // archivo_escritura.write(fileData, sizeFile);
 
-    archivo_escritura.close();
+    // archivo_escritura.close();
 
     // confirmation send
 
@@ -357,34 +375,29 @@ void sendFile(std::string command)
 
     std::string destination = command.substr(pos1+pos2+4);
 
-    // reading file
-    std::ifstream archivo_lectura(fileName, std::ios::binary);
+    // reading file content
+    std::ifstream file(fileName, std::ios::binary);
 
-    if (!archivo_lectura) {
-        std::cerr << "\n[!] No se pudo abrir el archivo de entrada" << std::endl;
+    if (!file) {
+        std::cerr << "Error al abrir el archivo." << std::endl;
         return;
     }
 
-    archivo_lectura.seekg(0, std::ios::end);
-
-    std::streampos fileSize = archivo_lectura.tellg();
-
-    archivo_lectura.seekg(0, std::ios::beg);
-
-    unsigned * fileData = new unsigned char[static_cast<int>(fileSize)];
-
-    // char* fileData = new char[fileSize];
-
-    if (fileSize == 0) {
-        std::cerr << "\n[!] Error de lectura" << std::endl;
-        return;
+    // Obtener el tamaño del archivo
+    struct stat file_stat;
+    if (stat(fileName.c_str(), &file_stat) == -1) {
+        std::cerr << "Error al obtener el tamaño del archivo." << std::endl;
+        return ;
     }
 
-    archivo_lectura.read(fileData, static_cast<int>(fileSize));
+    // Establecer el tamaño del búfer
+    const int fileSize = file_stat.st_size;
+    unsigned char*fileData = new unsigned char[fileSize];
 
-    archivo_lectura.close();
+    file.read(reinterpret_cast<char*>(fileData), fileSize);
 
-    std::cout << " \nFile readed: " << fileSize << std::endl;
+    int bytesRead = file.gcount();
+    std::cout << " \nFile readed: " << bytesRead << std::endl;
 
     // time stamp
     auto tiempo_actual = std::chrono::system_clock::now();
@@ -400,11 +413,12 @@ void sendFile(std::string command)
 
     std::string timeStamp = formato.str();
 
-    std::string hash_ts = calculateSHA1(fileData + timeStamp);
+
+    std::string hash_ts = calculateSHA1(fileData, bytesRead, timeStamp);
 
     std::cout << "'"<<fileData <<"'"<< std::endl;
 
-    // making payload
+    // making payload   
 
     int p_size = 1 + 2 + destination.size() + 5 + fileName.size() + 15 + static_cast<int>(fileSize) + 40 + 14 + 1;
     unsigned char payload[p_size];
@@ -445,7 +459,7 @@ void sendFile(std::string command)
 
     more += fileName.size();
 
-    std::string data_size_s = completeByteSize((int) fileSize, 15);
+    std::string data_size_s = completeByteSize(bytesRead, 15);
 
     for(int i = 0; i < 15; i++)
     {
@@ -454,12 +468,12 @@ void sendFile(std::string command)
     
     more += 15;
 
-    for(int i = 0; i < static_cast<int>(fileSize); i++)
+    for(int i = 0; i < bytesRead; i++)
     {
         payload[more + i] = fileData[i];
     }
 
-    more += static_cast<int>(fileSize);
+    more += bytesRead;
 
     for(int i = 0; i < 40; i++)
     {
@@ -572,42 +586,17 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    std::cout << "-------------------------COMMANDS-------------------------\n";
-    std::cout << "list ---------------------------> list users in server\n";
-    std::cout << "all, message -------------------> send message to all users in server\n";
-    std::cout << "nickname, message --------------> send message to specific user\n";
-    std::cout << "file, 'name of file', nickname -> send a file to other user\n";
-    std::cout << "quit ---------------------------> exit of service\n\n";
-
-
     sendInitNotification();
 
     // Iniciar un hilo para recibir mensajes del servidor
     std::thread(ReceiveMessages).detach();
 
+    // std::string init = "init, Brigham";
+
+    std::string command = "file, mario.png, Tom";
     // Leer mensajes del usuario y enviarlos al servidor
-    while (true) {
 
-        std::string command;
-
-        std::cout << nickname <<" #";
-
-        std::getline(std::cin, command);
-
-        if (command == "list")
-            reqListName();
-        else if (command == "quit")
-        {
-            quitServer();
-            break;
-        }
-        else if (command.substr(0,4) == "file" && command.size() > 4)
-        {
-            sendFile(command);
-        }
-        else 
-            sendMessage(command);
-    }
+    sendFile(command);
 
     close(SocketFD);
 

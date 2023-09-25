@@ -1,27 +1,49 @@
 #include <iostream>
-#include <string>
-#include <openssl/sha.h>
+#include <fstream>
+#include <vector>
 
-std::string calcularSHA1(const std::string &input) {
-    unsigned char hash[SHA_DIGEST_LENGTH];
-    SHA1(reinterpret_cast<const unsigned char *>(input.c_str()), input.length(), hash);
-
-    // Convertir el resultado en una cadena hexadecimal
-    std::string resultado;
-    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
-        char hex[3];
-        snprintf(hex, sizeof(hex), "%02x", hash[i]);
-        resultado += hex;
+int main(int argc, char **argv) {
+    std::cout << argv[1] << std::endl;
+    std::ifstream inputFile(argv[1], std::ios::binary);
+    if (!inputFile) {
+        std::cerr << "Error al abrir el archivo de entrada." << std::endl;
+        return 1;
     }
 
-    return resultado;
-}
+    // Obtener el tamaño del archivo
+    inputFile.seekg(0, std::ios::end);
+    std::streampos fileSize = inputFile.tellg();
+    inputFile.seekg(0, std::ios::beg);
 
-int main() {
-    std::string texto = "Hola, mundo!";
-    std::string sha1 = calcularSHA1(texto);
+    if (fileSize <= 0) {
+        std::cerr << "El archivo está vacío o no se pudo determinar su tamaño." << std::endl;
+        return 1;
+    }
 
-    std::cout << "SHA-1 de '" << texto << "': " << sha1 << std::endl;
+    // Establecer el tamaño del búfer
+    std::vector<unsigned char> buffer(fileSize);
+
+    std::cout << "s " <<buffer.size() << std::endl;
+    std::cout << "s " <<fileSize << std::endl;
+
+    // Leer el archivo en el búfer
+    inputFile.read(reinterpret_cast<char*>(&buffer[0]), fileSize);
+
+    inputFile.close();
+
+    std::string ofile = argv[1];
+    ofile = "a" + ofile;
+    std::ofstream outputFile(ofile, std::ios::binary);
+    if (!outputFile) {
+        std::cerr << "Error al abrir el archivo de salida." << std::endl;
+        return 1;
+    }
+
+    // Escribir el búfer en el archivo de salida
+    outputFile.write(reinterpret_cast<char*>(&buffer[0]), fileSize);
+    outputFile.close();
+
+    std::cout << "Archivo copiado exitosamente." << std::endl;
 
     return 0;
 }

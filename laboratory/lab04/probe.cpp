@@ -40,8 +40,14 @@ int main() {
             return 1;
         }
 
+        int i = 0;
+
+        std::string nombre = datos;
+
+        std::cout << "datos: " << nombre << " s: " <<nombre.size() << std::endl;
+
         // Escribe los datos del array en el archivo de salida
-        archivo_escritura.write(datos, tamano);
+        archivo_escritura.write(nombre.c_str(), nombre.size());
 
         archivo_escritura.close();
 

@@ -63,14 +63,12 @@ std::string calculateSHA1(const std::string &input) {
     return resultado;
 }
 
-
 // response of server
 
 std::string sendInitNotification()
 {
-    std::cout << "Input the Nickname: ";
-
-    std::getline(std::cin, nickname);
+   
+    nickname = "Tom";
 
     std::string notificationData = "N" + completeByteSize(nickname.size(), 2) + nickname;
 
@@ -256,15 +254,15 @@ void obtainingFile()
 
     // confirmation send
 
-    // std::string payload;
+        // std::string payload;
 
-    // payload = "R" + completeByteSize(sizeSource, 2) + source + result;
+        // payload = "R" + completeByteSize(sizeSource, 2) + source + result;
 
-    // std::cout << "r send: " << payload << " "<<payload.size() <<std::endl; 
+        // std::cout << "r send: " << payload << " "<<payload.size() <<std::endl; 
 
-    // send(SocketFD, payload.c_str(), payload.size(), 0);
+        // send(SocketFD, payload.c_str(), payload.size(), 0);
 
-    // std::cout << "\n [+] File received!" << std::endl;
+        // std::cout << "\n [+] File received!" << std::endl;
 }
 
 void ReceiveMessages() {
@@ -291,7 +289,6 @@ void ReceiveMessages() {
         {
             obtainingFile();
         }
-        
     }
 }
 
@@ -572,42 +569,13 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    std::cout << "-------------------------COMMANDS-------------------------\n";
-    std::cout << "list ---------------------------> list users in server\n";
-    std::cout << "all, message -------------------> send message to all users in server\n";
-    std::cout << "nickname, message --------------> send message to specific user\n";
-    std::cout << "file, 'name of file', nickname -> send a file to other user\n";
-    std::cout << "quit ---------------------------> exit of service\n\n";
-
-
     sendInitNotification();
 
     // Iniciar un hilo para recibir mensajes del servidor
+
     std::thread(ReceiveMessages).detach();
 
-    // Leer mensajes del usuario y enviarlos al servidor
-    while (true) {
-
-        std::string command;
-
-        std::cout << nickname <<" #";
-
-        std::getline(std::cin, command);
-
-        if (command == "list")
-            reqListName();
-        else if (command == "quit")
-        {
-            quitServer();
-            break;
-        }
-        else if (command.substr(0,4) == "file" && command.size() > 4)
-        {
-            sendFile(command);
-        }
-        else 
-            sendMessage(command);
-    }
+    // Leer mensajes del usuario y enviarlos al servidor    
 
     close(SocketFD);
 

@@ -63,14 +63,15 @@ std::string calculateSHA1(const std::string &input) {
     return resultado;
 }
 
-
 // response of server
 
 std::string sendInitNotification()
 {
     std::cout << "Input the Nickname: ";
 
-    std::getline(std::cin, nickname);
+    // std::getline(std::cin, nickname);
+
+    nickName = "Brigham";
 
     std::string notificationData = "N" + completeByteSize(nickname.size(), 2) + nickname;
 
@@ -478,7 +479,7 @@ void sendFile(std::string command)
     std::cout << timeStamp << std::endl;
 
     more += 15;
-    payload[more] = '\0';
+    // payload[more] = '\0';
 
     std::cout << "payload " << "'" << payload << "'" << std::endl; 
 
@@ -487,6 +488,7 @@ void sendFile(std::string command)
     std::cout << "[-] Send\n";
 
     delete [] fileData;
+
     // confirmation sended
 
     // char option[2];
@@ -572,42 +574,18 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    std::cout << "-------------------------COMMANDS-------------------------\n";
-    std::cout << "list ---------------------------> list users in server\n";
-    std::cout << "all, message -------------------> send message to all users in server\n";
-    std::cout << "nickname, message --------------> send message to specific user\n";
-    std::cout << "file, 'name of file', nickname -> send a file to other user\n";
-    std::cout << "quit ---------------------------> exit of service\n\n";
-
 
     sendInitNotification();
 
     // Iniciar un hilo para recibir mensajes del servidor
     std::thread(ReceiveMessages).detach();
 
+    // std::string init = "init, Brigham";
+
+    std::string command = "file, mario.png, Tomcommand";
     // Leer mensajes del usuario y enviarlos al servidor
-    while (true) {
 
-        std::string command;
-
-        std::cout << nickname <<" #";
-
-        std::getline(std::cin, command);
-
-        if (command == "list")
-            reqListName();
-        else if (command == "quit")
-        {
-            quitServer();
-            break;
-        }
-        else if (command.substr(0,4) == "file" && command.size() > 4)
-        {
-            sendFile(command);
-        }
-        else 
-            sendMessage(command);
-    }
+    sendFile(command);
 
     close(SocketFD);
 
