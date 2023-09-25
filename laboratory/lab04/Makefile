@@ -9,6 +9,7 @@ all:
 	cp hacking_group.jpg workspace/client1
 	cp texto.txt workspace/client1
 	cp mario.png workspace/client1
+	cp wallpaper.jpg workspace/client1
 
 clean:
 	rm -rf workspace

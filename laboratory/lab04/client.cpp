@@ -24,6 +24,7 @@
 
 // file 
 #include <fstream>
+#include <sys/stat.h>
 
 // hash 
 #include <openssl/sha.h>
@@ -48,19 +49,36 @@ std::string completeByteSize(int number, int size)
     return returnNumber;
 }
 
-std::string calculateSHA1(const std::string &input) {
+std::string calculateSHA1(unsigned char* data, int size, std::string timestamp) {
     unsigned char hash[SHA_DIGEST_LENGTH];
-    SHA1(reinterpret_cast<const unsigned char *>(input.c_str()), input.length(), hash);
-
-    // Convertir el resultado en una cadena hexadecimal
-    std::string resultado;
-    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
-        char hex[3];
-        snprintf(hex, sizeof(hex), "%02x", hash[i]);
-        resultado += hex;
+    SHA_CTX shaContext;
+    if (!SHA1_Init(&shaContext)) {
+        std::cerr << "Error al inicializar el contexto SHA-1." << std::endl;
+        return "";
+    }
+    
+    if (!SHA1_Update(&shaContext, data, size)) {
+        std::cerr << "Error al actualizar el contexto SHA-1 con datos." << std::endl;
+        return "";
     }
 
-    return resultado;
+    if (!SHA1_Update(&shaContext, timestamp.c_str(), timestamp.size())) {
+        std::cerr << "Error al actualizar el contexto SHA-1 con la marca de tiempo." << std::endl;
+        return "";
+    }
+
+    if (!SHA1_Final(hash, &shaContext)) {
+        std::cerr << "Error al finalizar el cálculo del hash SHA-1." << std::endl;
+        return "";
+    }
+
+    // Convertir el resultado en una cadena hexadecimal
+    std::stringstream ss;
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(hash[i]);
+    }
+
+    return ss.str();
 }
 
 
@@ -176,8 +194,10 @@ void obtainingFile()
 
     char source[sizeSource + 1];
 
+
     nBytes = recv(SocketFD, source, sizeSource, 0);
 
+    
     source[nBytes] = '\0';
 
     // file name of source client
@@ -191,11 +211,12 @@ void obtainingFile()
     int sizeFilename = atoi(size_fileName);
 
     char fileName[sizeFilename + 1];
+    
 
     nBytes = recv(SocketFD, fileName, sizeFilename, 0);
 
     fileName[nBytes] = '\0';
-
+    
     // file content
 
     char size_file[16];
@@ -206,9 +227,9 @@ void obtainingFile()
 
     int sizeFile = atoi(size_file);
 
-    char fileData[sizeFile + 1];
+    unsigned char fileData[sizeFile + 1];
 
-    nBytes = recv(SocketFD, fileData, sizeFile, 0);
+    nBytes = read(SocketFD, fileData, sizeFile);
 
     fileData[nBytes] = '\0';
 
@@ -225,14 +246,7 @@ void obtainingFile()
     
     timeStamp[nBytes] = '\0';
 
-    std::string hash_tm;
-
-    hash_tm += fileData;
-    hash_tm += timeStamp;
-
-
-    // std::cout << "hash: " << hash_tm << std::endl;
-    std::string result = calculateSHA1(hash_tm);
+    std::string result = calculateSHA1(fileData, sizeFile, timeStamp);
 
     // std::cout << "hash: '" << hash <<  " hashtm: '" << hash_tm << std::endl;
 
@@ -250,7 +264,7 @@ void obtainingFile()
         return;
     }
 
-    archivo_escritura.write(fileData, sizeFile);
+    archivo_escritura.write(reinterpret_cast<char*>(fileData), sizeFile);
 
     archivo_escritura.close();
 
@@ -260,11 +274,9 @@ void obtainingFile()
 
     // payload = "R" + completeByteSize(sizeSource, 2) + source + result;
 
-    // std::cout << "r send: " << payload << " "<<payload.size() <<std::endl; 
-
     // send(SocketFD, payload.c_str(), payload.size(), 0);
 
-    // std::cout << "\n [+] File received!" << std::endl;
+    std::cout << "\n [+] File received!" << std::endl;
 }
 
 void ReceiveMessages() {
@@ -357,34 +369,28 @@ void sendFile(std::string command)
 
     std::string destination = command.substr(pos1+pos2+4);
 
-    // reading file
-    std::ifstream archivo_lectura(fileName, std::ios::binary);
+    // reading file content
+    std::ifstream file(fileName, std::ios::binary);
 
-    if (!archivo_lectura) {
-        std::cerr << "\n[!] No se pudo abrir el archivo de entrada" << std::endl;
+    if (!file) {
+        std::cerr << "Error al abrir el archivo." << std::endl;
         return;
     }
 
-    archivo_lectura.seekg(0, std::ios::end);
-
-    std::streampos fileSize = archivo_lectura.tellg();
-
-    archivo_lectura.seekg(0, std::ios::beg);
-
-    unsigned * fileData = new unsigned char[static_cast<int>(fileSize)];
-
-    // char* fileData = new char[fileSize];
-
-    if (fileSize == 0) {
-        std::cerr << "\n[!] Error de lectura" << std::endl;
-        return;
+    // Obtener el tamaño del archivo
+    struct stat file_stat;
+    if (stat(fileName.c_str(), &file_stat) == -1) {
+        std::cerr << "Error al obtener el tamaño del archivo." << std::endl;
+        return ;
     }
 
-    archivo_lectura.read(fileData, static_cast<int>(fileSize));
+    // Establecer el tamaño del búfer
+    const int fileSize = file_stat.st_size;
+    unsigned char*fileData = new unsigned char[fileSize];
 
-    archivo_lectura.close();
+    file.read(reinterpret_cast<char*>(fileData), fileSize);
 
-    std::cout << " \nFile readed: " << fileSize << std::endl;
+    int bytesRead = file.gcount();
 
     // time stamp
     auto tiempo_actual = std::chrono::system_clock::now();
@@ -400,102 +406,37 @@ void sendFile(std::string command)
 
     std::string timeStamp = formato.str();
 
-    std::string hash_ts = calculateSHA1(fileData + timeStamp);
+    std::string hash_ts = calculateSHA1(fileData, bytesRead, timeStamp);
 
-    std::cout << "'"<<fileData <<"'"<< std::endl;
+    // std::cout << "'"<<fileData <<"'"<< std::endl;
 
-    // making payload
+    // making payload 
 
-    int p_size = 1 + 2 + destination.size() + 5 + fileName.size() + 15 + static_cast<int>(fileSize) + 40 + 14 + 1;
-    unsigned char payload[p_size];
+    std::string prePayload = "F" + 
+        completeByteSize(destination.size(), 2) + destination + 
+        completeByteSize(fileName.size(), 5) + fileName + 
+        completeByteSize(bytesRead, 15);
 
-    payload[0] = 'F';
+    std::cout << prePayload << std::endl;
 
-    int more = 1;
+    send(SocketFD, prePayload.c_str(), prePayload.size(), 0);  
 
-    std::string d_size_s = completeByteSize(destination.size(), 2);
+    // send data file
 
-    for(int i = 0; i < 2; i++)
-    {
-        payload[more + i] = d_size_s[i];
-    }
+    send(SocketFD, fileData, bytesRead, 0);
 
-    more += 2;
+    std::string hash_complete = hash_ts + timeStamp;
 
-    for(int i = 0; i < destination.size(); i++)
-    {
-        payload[more + i] = destination[i];
-    }
+    std::cout << hash_complete << std::endl;
+    send(SocketFD, hash_complete.c_str() , hash_complete.size(), 0);
 
-    more += destination.size();
-
-    std::string fn_size_s = completeByteSize(fileName.size(), 5);
-
-    for(int i = 0; i < 5; i++)
-    {
-        payload[more + i] = fn_size_s[i];
-    }
-
-    more += 5;
-
-    for(int i = 0; i < fileName.size(); i++)
-    {
-        payload[more + i] = fileName[i];
-    }
-
-    more += fileName.size();
-
-    std::string data_size_s = completeByteSize((int) fileSize, 15);
-
-    for(int i = 0; i < 15; i++)
-    {
-        payload[more + i] = data_size_s[i];
-    }
-    
-    more += 15;
-
-    for(int i = 0; i < static_cast<int>(fileSize); i++)
-    {
-        payload[more + i] = fileData[i];
-    }
-
-    more += static_cast<int>(fileSize);
-
-    for(int i = 0; i < 40; i++)
-    {
-        payload[more + i] = hash_ts[i];
-    }
-
-    std::cout << hash_ts << std::endl;
-
-    more += 40;
-
-    for(int i = 0; i < 14; i++)
-    {
-        payload[more + i] = timeStamp[i];
-    }
-
-    std::cout << timeStamp << std::endl;
-
-    more += 15;
-    payload[more] = '\0';
-
-    std::cout << "payload " << "'" << payload << "'" << std::endl; 
-
-    send(SocketFD, payload, p_size, 0);  
-
-    std::cout << "[-] Send\n";
-
-    delete [] fileData;
-    // confirmation sended
+    // confirmation obtaining
 
     // char option[2];
     // int nBytes;
 
     // nBytes = recv(SocketFD, option, 1, 0);
     // option[2] = '\0';
-
-    // std::cout << "option: " << option << std::endl;
 
     // if (option[0] != 'R')
     // {
@@ -509,8 +450,6 @@ void sendFile(std::string command)
 
     // size_source[nBytes] = '\0';
 
-    // std::cout << "s_source: " << size_source << std::endl;
-
     // int sizeSource = atoi(size_source);
 
     // char source[sizeSource + 1];
@@ -518,9 +457,8 @@ void sendFile(std::string command)
     // nBytes = recv(SocketFD, source, sizeSource, 0);
     // source[nBytes] = '\0';
 
-    // std::cout << "source: " << source << std::endl;
+    // std::cout << destination << std::endl;
 
-    // std::cout << source  << std::endl;
     // if (strcmp(destination.c_str(), source) != 0)
     // {
     //     std::cout << "[+] Los usuarios no concuerdan\n";
@@ -533,16 +471,15 @@ void sendFile(std::string command)
 
     // hash[nBytes] = '\0';
 
-    // std::cout << "hash: " << hash << std::endl;
-
     // if (strcmp(hash_ts.c_str(), hash) != 0)
     // {
     //     std::cout << "\n[!] La integridad del archivo fue corrompida en el envio!\n";
     //     return;
     // }
 
-    // std::cout << "\n[+] File sended and received!" << std::endl;
+    std::cout << "\n[+] File sended and received!" << std::endl;
 
+    delete [] fileData;
 }
 
 int main(int argc, char *argv[]) {
