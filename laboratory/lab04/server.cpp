@@ -11,6 +11,7 @@
 #include <map>
 #include <string>
 #include <iostream>
+#include <cstring>
 
 std::string completeByteSize(int number, int size)
 {
@@ -173,9 +174,46 @@ void forwardDiffusionMessage(int clientSocket, std::string nickName)
     std::cout << "[+] Forward Diffusion message\n";
 }
 
+void fileIntegrityResponse(int clientSocket, std::string nickname)
+{   
+
+    // ##### forwarding response to source #####
+    int nBytes;
+    
+    char size_destination[3];   
+
+    nBytes = recv(clientSocket, size_destination, 2, 0);
+
+    size_destination[nBytes] = '\0';
+
+    int sizeDestination = atoi(size_destination);
+
+    char destination[sizeDestination + 1];
+
+    nBytes = recv(clientSocket, destination, sizeDestination, 0);
+
+    destination[nBytes] = '\0';
+
+    // obtaining hash
+    char newHash[41];
+
+    nBytes = recv(clientSocket, newHash, 40, 0);
+
+    newHash[nBytes] = '\0';
+
+    std::string response = "R" + completeByteSize(nickname.size(), 2) + nickname + newHash;
+
+    std::cout << "[!] Response to source:" << response << std::endl;
+
+    send(clientNicknames[destination], response.c_str(), response.size(), 0);
+
+    // ##### forwarding response to source #####
+}
+
 void forwardFile(int clientSocket, std::string nickName)
 {
 
+    // ##### first charge #####
     char size_source[3];
 
     int nBytes;
@@ -221,14 +259,9 @@ void forwardFile(int clientSocket, std::string nickName)
 
     int sizeFile = atoi(size_file);
 
-    // end pre-payload 
+    // ##### end first charge #####
 
-    unsigned char fileData[sizeFile + 1];
-
-    nBytes = recv(clientSocket, fileData, sizeFile, 0);
-
-    fileData[nBytes] = '\0';
-
+    // ##### receiving hash and timestamp #####
     char hash[41];
 
     nBytes = recv(clientSocket, hash, 40, 0);
@@ -241,8 +274,27 @@ void forwardFile(int clientSocket, std::string nickName)
 
     timeStamp[nBytes] = '\0';
 
-    std::cout << sizeFile << std::endl;
+    // ##### end receiving hash and timestamp #####
 
+
+    // ##### receiving file #####
+    int bufferSize = 1024;
+
+    unsigned char buffer[bufferSize];
+    
+    unsigned char *fileData = new unsigned char [sizeFile];
+
+    int totalRead = 0;
+
+    while (totalRead < sizeFile) {
+        nBytes = recv(clientSocket, buffer, bufferSize, 0);
+        std::memcpy(fileData + totalRead, buffer, nBytes);
+        totalRead += nBytes;
+    }
+
+    // ##### end receiving file #####
+
+    // ##### sending response #####
     std::string prePayload;
 
     prePayload = "F" + 
@@ -250,64 +302,28 @@ void forwardFile(int clientSocket, std::string nickName)
         size_fileName + fileName +
         size_file;
 
-    std::cout << prePayload << std::endl;
+    std::cout << "[*] First Charge: " << prePayload << std::endl;
 
     send(clientNicknames[destination], prePayload.c_str(), prePayload.size(), 0);
+
+    // hash
+    std::string hash_complete;
+
+    hash_complete += hash;
+    hash_complete += timeStamp;
+
+    std::cout << "[*] Last Charge: " << hash_complete << std::endl;
+    
+    send(clientNicknames[destination], hash_complete.c_str(), hash_complete.size(), 0);
 
     // data file
     send(clientNicknames[destination], fileData, sizeFile, 0);
 
-    // hash
-    std::string hash_complete = "";
+    delete [] fileData;
 
-    hash_complete += hash;
-    hash_complete += timeStamp;
-    
-    std::cout << hash_complete << std::endl;
-    send(clientNicknames[destination], hash_complete.c_str(), hash_complete.size(), 0);
+    // ##### sending response #####
 
     // forward response
-    
-    // char option[2];
-
-    // nBytes = recv(clientNicknames[destination], option, 1, 0);
-
-    // option[nBytes] = '\0';
-    
-    // std::cout << "foption: " << option << std::endl;
-    
-    // char new_s_source[3];   
-
-    // nBytes = recv(clientNicknames[destination], new_s_source, 2, 0);
-
-    // new_s_source[nBytes] = '\0';
-
-    // sizeSource = atoi(new_s_source);
-
-    // std::cout << "s_source: '" << new_s_source << "' " << nBytes<<std::endl;
-
-    // char source[sizeSource + 1];
-
-    // nBytes = recv(clientNicknames[destination], source, sizeSource, 0);
-
-    // source[nBytes] = '\0';
-
-    // std::cout << "source: '" << source << "' " << nBytes<<std::endl;
-
-    // // obtaining hash
-    // char newHash[41];
-
-    // nBytes = recv(clientNicknames[destination], newHash, 40, 0);
-
-    // newHash[nBytes] = '\0';
-
-    // std::cout << "hash: '" << newHash << "' " << nBytes<<std::endl;
-
-    // std::string response = "R" + completeByteSize(nickName.size(), 2) + nickName + newHash;
-
-    // std::cout << "response:" << response << std::endl;
-
-    // send(clientSocket,response.c_str(), response.size(), 0);
 
     std::cout << "[+] Forward file\n";
 }
@@ -364,6 +380,8 @@ void HandleClient(int clientSocket) {
             forwardDiffusionMessage(clientSocket, nickName);
         else if (option[0] == 'F')
             forwardFile(clientSocket, nickName);
+        else if (option[0] == 'R')
+            fileIntegrityResponse(clientSocket, nickName);
         else if (option[0] == 'Q')
             closeSession(nickName);
     }

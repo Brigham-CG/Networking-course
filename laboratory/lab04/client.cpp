@@ -33,6 +33,8 @@
 int SocketFD;
 std::string nickname;
 
+std::string hash_ts;
+
 // tools
 std::string completeByteSize(int number, int size)
 {
@@ -179,8 +181,9 @@ void obtainingMessage()
 }
 
 void obtainingFile()
+    
 {
-
+    // ##### prepayload #####
     char size_source[3];
 
     int nBytes;
@@ -197,7 +200,6 @@ void obtainingFile()
 
     nBytes = recv(SocketFD, source, sizeSource, 0);
 
-    
     source[nBytes] = '\0';
 
     // file name of source client
@@ -211,7 +213,6 @@ void obtainingFile()
     int sizeFilename = atoi(size_fileName);
 
     char fileName[sizeFilename + 1];
-    
 
     nBytes = recv(SocketFD, fileName, sizeFilename, 0);
 
@@ -227,56 +228,122 @@ void obtainingFile()
 
     int sizeFile = atoi(size_file);
 
-    unsigned char fileData[sizeFile + 1];
+    // ##### end prepayload #####
 
-    nBytes = read(SocketFD, fileData, sizeFile);
+    // ##### hash and timestamp #####
+    // hash 
+    char *hash = new char[41];
 
-    fileData[nBytes] = '\0';
+    nBytes = recv(SocketFD, hash, 40, 0);
 
-    // hash camp
+    hash[nBytes] = '\0';
+
+    char *timeStamp = new char[15];
+
+    nBytes = recv(SocketFD, timeStamp, 14, 0);
+    
+    timeStamp[nBytes] = '\0';
+
+    // ##### end hash and timestamp #####
+
+
+    // obtaining binary data 
+    int bufferSize = 1024;
+
+    unsigned char buffer[bufferSize];
+
+    unsigned char *fileData = new unsigned char [sizeFile];
+
+    int totalRead = 0;
+
+    while (totalRead < sizeFile) {
+        nBytes = recv(SocketFD, buffer, bufferSize, 0);
+        std::memcpy(fileData + totalRead, buffer, nBytes);
+        totalRead += nBytes;
+    }
+
+
+    std::string result = calculateSHA1(fileData, sizeFile, timeStamp);
+
+
+    std::cout << "\n [*] Recalculated Hash: " << hash << std::endl;
+
+    if(strcmp(hash, result.c_str()) != 0)
+    {
+        delete [] hash;
+        delete [] timeStamp;
+        std::cerr << "\n [!] La integridad del archivo esta corrupta" << std::endl;
+        return;
+    }
+
+    delete [] hash;
+    delete [] timeStamp;
+
+    
+    // ##### saving file in local #####
+    std::ofstream archivo_escritura(fileName, std::ios::binary);
+
+    if (!archivo_escritura) {
+        std::cerr << "\n [!] No se puede guardar el archivo de salida" << std::endl;
+        return;
+    }
+    archivo_escritura.write(reinterpret_cast<char*>(fileData), totalRead);
+
+    archivo_escritura.close();  
+
+    delete [] fileData;
+
+    // ##### end saving file in local #####
+
+    // ##### end obtaining file #####
+
+    // ##### confirmation response #####
+
+    std::string payload;
+
+    payload = "R" + completeByteSize(sizeSource, 2) + source + result;
+
+    send(SocketFD, payload.c_str(), payload.size(), 0);
+
+    std::cout << "\n [+] File received!" << std::endl;
+    // ##### end confirmation response #####
+}
+
+void confirmingReception()
+{
+    // confirmation obtaining
+ 
+    int nBytes;
+    
+    char size_source[3];
+
+    nBytes = recv(SocketFD, size_source, 2, 0);
+
+    size_source[nBytes] = '\0';
+
+    int sizeSource = atoi(size_source);
+
+    char source[sizeSource + 1];
+
+    nBytes = recv(SocketFD, source, sizeSource, 0);
+    source[nBytes] = '\0';
+
     char hash[41];
 
     nBytes = recv(SocketFD, hash, 40, 0);
 
     hash[nBytes] = '\0';
 
-    char timeStamp[15];
+    std::cout << "\n [*] Hash from destination:" << hash << std::endl;
 
-    nBytes = recv(SocketFD, timeStamp, 14, 0);
-    
-    timeStamp[nBytes] = '\0';
-
-    std::string result = calculateSHA1(fileData, sizeFile, timeStamp);
-
-    // std::cout << "hash: '" << hash <<  " hashtm: '" << hash_tm << std::endl;
-
-    if(strcmp(hash, result.c_str()) != 0)
+    if (strcmp(hash_ts.c_str(), hash) != 0)
     {
-        std::cerr << "\n[!] La integridad del archivo esta corrupta" << std::endl;
+        std::cout << "\n [!] La integridad del archivo fue corrompida en el envio!\n";
         return;
     }
 
-    // saving file
-    std::ofstream archivo_escritura(fileName, std::ios::binary);
+    std::cout << "\n [+] File sended and received!" << std::endl;
 
-    if (!archivo_escritura) {
-        std::cerr << "\n[!] No se pudo abrir el archivo de salida" << std::endl;
-        return;
-    }
-
-    archivo_escritura.write(reinterpret_cast<char*>(fileData), sizeFile);
-
-    archivo_escritura.close();
-
-    // confirmation send
-
-    // std::string payload;
-
-    // payload = "R" + completeByteSize(sizeSource, 2) + source + result;
-
-    // send(SocketFD, payload.c_str(), payload.size(), 0);
-
-    std::cout << "\n [+] File received!" << std::endl;
 }
 
 void ReceiveMessages() {
@@ -300,10 +367,9 @@ void ReceiveMessages() {
         else if(buffer[0] == 'M')
             obtainingMessage();
         else if(buffer[0] == 'F')
-        {
             obtainingFile();
-        }
-        
+        else if(buffer[0] == 'R')
+            confirmingReception();
     }
 }
 
@@ -373,14 +439,14 @@ void sendFile(std::string command)
     std::ifstream file(fileName, std::ios::binary);
 
     if (!file) {
-        std::cerr << "Error al abrir el archivo." << std::endl;
+        std::cerr << "\n [!] Error al abrir el archivo." << std::endl;
         return;
     }
 
     // Obtener el tamaño del archivo
     struct stat file_stat;
     if (stat(fileName.c_str(), &file_stat) == -1) {
-        std::cerr << "Error al obtener el tamaño del archivo." << std::endl;
+        std::cerr << "\n [!] Error al obtener el tamaño del archivo." << std::endl;
         return ;
     }
 
@@ -391,6 +457,15 @@ void sendFile(std::string command)
     file.read(reinterpret_cast<char*>(fileData), fileSize);
 
     int bytesRead = file.gcount();
+
+    // making pre-payload 
+
+    std::string prePayload = "F" + 
+        completeByteSize(destination.size(), 2) + destination + 
+        completeByteSize(fileName.size(), 5) + fileName + 
+        completeByteSize(bytesRead, 15);
+
+    send(SocketFD, prePayload.c_str(), prePayload.size(), 0);  
 
     // time stamp
     auto tiempo_actual = std::chrono::system_clock::now();
@@ -406,80 +481,20 @@ void sendFile(std::string command)
 
     std::string timeStamp = formato.str();
 
-    std::string hash_ts = calculateSHA1(fileData, bytesRead, timeStamp);
+    hash_ts = calculateSHA1(fileData, bytesRead, timeStamp);
 
-    // std::cout << "'"<<fileData <<"'"<< std::endl;
+    std::string hash_complete = hash_ts + timeStamp;
 
-    // making payload 
-
-    std::string prePayload = "F" + 
-        completeByteSize(destination.size(), 2) + destination + 
-        completeByteSize(fileName.size(), 5) + fileName + 
-        completeByteSize(bytesRead, 15);
-
-    std::cout << prePayload << std::endl;
-
-    send(SocketFD, prePayload.c_str(), prePayload.size(), 0);  
+    std::cout << "\n [*] Hash of file(hash + ts): " << hash_ts << std::endl;
+    
+    send(SocketFD, hash_complete.c_str() , hash_complete.size(), 0);
 
     // send data file
 
     send(SocketFD, fileData, bytesRead, 0);
 
-    std::string hash_complete = hash_ts + timeStamp;
-
-    std::cout << hash_complete << std::endl;
-    send(SocketFD, hash_complete.c_str() , hash_complete.size(), 0);
-
-    // confirmation obtaining
-
-    // char option[2];
-    // int nBytes;
-
-    // nBytes = recv(SocketFD, option, 1, 0);
-    // option[2] = '\0';
-
-    // if (option[0] != 'R')
-    // {
-    //     std::cout << "\n[!] No hubo confirmacion del envio, vuelva a intentarlo\n";
-    //     return;
-    // }
-    
-    // char size_source[3];
-
-    // nBytes = recv(SocketFD, size_source, 2, 0);
-
-    // size_source[nBytes] = '\0';
-
-    // int sizeSource = atoi(size_source);
-
-    // char source[sizeSource + 1];
-
-    // nBytes = recv(SocketFD, source, sizeSource, 0);
-    // source[nBytes] = '\0';
-
-    // std::cout << destination << std::endl;
-
-    // if (strcmp(destination.c_str(), source) != 0)
-    // {
-    //     std::cout << "[+] Los usuarios no concuerdan\n";
-    //     return;
-    // }
-
-    // char hash[41];
-
-    // nBytes = recv(SocketFD, hash, 40, 0);
-
-    // hash[nBytes] = '\0';
-
-    // if (strcmp(hash_ts.c_str(), hash) != 0)
-    // {
-    //     std::cout << "\n[!] La integridad del archivo fue corrompida en el envio!\n";
-    //     return;
-    // }
-
-    std::cout << "\n[+] File sended and received!" << std::endl;
-
     delete [] fileData;
+
 }
 
 int main(int argc, char *argv[]) {
