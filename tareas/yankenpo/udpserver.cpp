@@ -12,6 +12,7 @@
 #include <functional>
 
 #include "server_libraries/options_protocol.cpp"
+#include "server_libraries/yankenpo.cpp"
 
 #include <thread>
 #include <map>
@@ -61,6 +62,23 @@ void handle_new_clients(int socketFD)
         {
             std::thread(closeSession, socketFD, client_addr, std::ref(nicknameToIPPort), message).detach();
         }
+        // yankenpo game
+        else if (message[0] == 'Y')
+        {
+            std::thread(createYankenpoParty, socketFD, client_addr, std::ref(nicknameToIPPort), message).detach();
+        }
+        else if (message[0] == 'G')
+        {
+            std::thread(sendListGames, socketFD, client_addr, std::ref(nicknameToIPPort), message).detach();
+        }
+        else if (message[0] == 'J')
+        {
+            std::thread(joinToParty, socketFD, client_addr, std::ref(nicknameToIPPort), message).detach();
+        }
+        else if (message[0] == 'P')
+        {
+            std::thread(receivePlay, socketFD, client_addr, std::ref(nicknameToIPPort), message).detach();
+        }
     }
 }
 
@@ -105,7 +123,6 @@ int main(int argc, char *argv[])
     addr_len = sizeof(struct sockaddr);
 		
 	std::cout << "[+] Server started\n";
-    fflush(stdout);
 
 	handle_new_clients(socketFD);
 

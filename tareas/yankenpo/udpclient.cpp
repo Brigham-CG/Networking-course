@@ -36,6 +36,11 @@ void handle_commands(std::string nickname, int socketFD, struct sockaddr_in serv
          std::cout << "all, message ------> send message to all users in server\n";
          std::cout << "nickname, message -> send message to specific user\n";
          std::cout << "quit --------------> exit of service\n\n";
+         std::cout << "\n            Yankenpo game\n\n";
+         std::cout << "yankenpo create ---> create a yankenpo game\n";
+         std::cout << "yankenpo list -----> view the list of parties\n";
+         std::cout << "yankenpo join -----> join to yankenpo party\n";
+         std::cout << "play, {play} ------> play of yankenpo {piedra | papel | tijera}\n\n";
       }
       else if (command == "list")
          reqListName(socketFD, server_protocols, nickname);
@@ -48,14 +53,22 @@ void handle_commands(std::string nickname, int socketFD, struct sockaddr_in serv
          createYankenpoGame(socketFD, server_protocols, nickname);
       else if (command == "yankenpo list")
          viewListParties(socketFD, server_protocols, nickname);
-      else if (command.substr(0, 14) == "yankenpo join " && !game_created)
-         joinYankenpoParty(command.substr(14, command.size()), socketFD, server_protocols, nickname);
+      else if (command.substr(0, 14) == "yankenpo join ")
+      {
+         if(!game_created)
+         {
+            joinYankenpoParty(command.substr(14, command.size()), socketFD, server_protocols, nickname);
+         }
+         else{
+            std::cout << "\n [!] You has been created a game, you cant join!\n"; 
+         }
+      }
       else if(command.substr(0, 6) =="play, ")
       {
          if(in_game)
             sendYankenpoPlay(command.substr(6, command.size()), socketFD, server_protocols, nickname);
          else 
-            std::cout << " \n [!] the game has not started yet\n";
+            std::cout << " \n [!] The game has not started yet\n";
       }
       else
          sendMessage(command, socketFD, server_protocols, nickname);
@@ -85,13 +98,14 @@ void ReceiveMessages(std::string nickname, int socketFD, struct sockaddr_in serv
          getListUsers(message);
       else if(buffer[0] == 'M')
          obtainingMessage(message);
+      else if(buffer[0] == 'Y')
+         getIdParty(message);
       else if(buffer[0] == 'G')
          getListParties(message);
       else if(buffer[0] == 'P')
          startingPlay(message);
       else if(buffer[0] == 'R')
          getResult(nickname, message);
-
    }
 }
 

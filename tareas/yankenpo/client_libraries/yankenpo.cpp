@@ -6,12 +6,16 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include <vector>
+#include <sstream>
+
 #include <string>
 #include <iostream>
 #include "../tools/tools.cpp"
 
 bool game_created = false;
 bool in_game = false;
+std::string idParty = "0";
 
 // ######### SEND MESSAGES ##########
 
@@ -46,6 +50,8 @@ void joinYankenpoParty(std::string command, int  socketFD, struct sockaddr_in se
 {
 
     std::string id_party = command;
+
+    idParty = id_party; // establecer localmente el id
     
     std::string message = "J" + completeByteSize(nickname.size(), 2) + nickname + completeByteSize(id_party.size(), 2) + id_party;
 
@@ -60,7 +66,7 @@ void joinYankenpoParty(std::string command, int  socketFD, struct sockaddr_in se
 void sendYankenpoPlay(std::string command, int  socketFD, struct sockaddr_in server_protocols, std::string nickname)
 {
 
-    char play;
+    std::string play;
 
     if(command == "piedra")
     {
@@ -80,7 +86,7 @@ void sendYankenpoPlay(std::string command, int  socketFD, struct sockaddr_in ser
         return;
     }
 
-    std::string message = "P" + completeByteSize(nickname.size(), 2) + nickname + play;
+    std::string message = "P" + completeByteSize(nickname.size(), 2) + nickname + completeByteSize(idParty.size(), 2) + idParty+ play;
 
     message.resize(1024, '\0');
 
@@ -103,22 +109,39 @@ void getListParties(std::string message)
 
     init += 2;
 
+    std::string list = message.substr(init, sizeList);
 
-    std::string list;
+    std::istringstream ss(list);
+    std::string token;
+    std::vector<std::string> tokens;
 
-    for(int i = 0 ; i < sizeList; i++)
-    {
-        std::string size_party_id = message.substr(init, 2);
-        int sizePartyId = stoi(size_party_id);
-        init += sizePartyId;
-
-        std::string party_id = message.substr(init, sizePartyId);
-
-        list += "*" + party_id + "\n";
+    while (std::getline(ss, token, ',')) {
+        tokens.push_back(token);
     }
 
-    std::cout << "\nList of users\n";
-    std::cout << list;
+    // Construir la lista de nombres
+    std::string listParty;
+
+    for (const std::string& nombre : tokens)
+        listParty += " * " + nombre + "\n";
+
+
+    std::cout << "\nList of parties\n";
+    std::cout << listParty;
+}
+
+void getIdParty(std::string message)
+{
+
+    int init = 1;
+
+    std::string size_party = message.substr(init, 2);
+    int sizeParty = stoi(size_party);
+    init += 2;
+
+    std::string party = message.substr(init, sizeParty);
+
+    idParty = party;
 }
 
 void startingPlay(std::string message)
@@ -129,23 +152,34 @@ void startingPlay(std::string message)
     int sizeOpponent = stoi(size_opponent);
     init += 2;
 
-    std::string opponent_nickname =  message.substr(init, sizeOpponent);
+    std::string opponent_nickname = message.substr(init, sizeOpponent);
 
     in_game = true;
-
+    
     std::cout << "\n [+] " + opponent_nickname + ", Your opponent is READY\n";
-    std::cout << " [+] Send your play (piedra | papel | tijera)\n";
+    std::cout << " [+] Send your play: (piedra | papel | tijera)\n";
 }
 
 void getResult(std::string nickname, std::string message)
 {
     int init = 1;
 
-    std::string size_opponent = message.substr(init, 2);
-    int sizeOpponent = stoi(size_opponent);
+    std::string size_winner = message.substr(init, 2);
+    int sizeWinner = stoi(size_winner);
+
+    game_created = false;
+    in_game = false;
+    idParty = "0";
+
+    if(sizeWinner == 0)
+    {
+        std::cout << "\n [!] Hubo un empate\n";
+        return;
+    }
+
     init += 2;
 
-    std::string winner_nickname =  message.substr(init, sizeOpponent);
+    std::string winner_nickname =  message.substr(init, sizeWinner);
 
     if(winner_nickname == nickname)
         std::cout << "\n [+] you are the winner\n";
@@ -153,8 +187,6 @@ void getResult(std::string nickname, std::string message)
     {
         std::cout << "\n [-] You are the looser!\n";
     }
-    game_created = false;
-    in_game = false;
 }
 
 // ######### END RECIEVE MESSAGES ##########
