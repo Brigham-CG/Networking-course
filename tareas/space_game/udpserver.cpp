@@ -79,6 +79,10 @@ void handle_new_clients(int socketFD)
         {
             std::thread(receivePlay, socketFD, client_addr, std::ref(nicknameToIPPort), message).detach();
         }
+        else if (message[0] == 'R')
+        {
+            std::thread(exitPlayer, socketFD, client_addr, std::ref(nicknameToIPPort), message).detach();
+        }
     }
 }
 

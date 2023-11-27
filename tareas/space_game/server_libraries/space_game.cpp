@@ -14,10 +14,14 @@
 #include <iostream>
 
 #include <thread>
+
 #include "../tools/tools.cpp"
+#include "game.cpp"
 
 std::map<int, std::vector<std::string>> partyList;
+std::map<std::string, int> partyNicknamesToIndex;
 std::map<int, std::vector<char>> charactersOfPlayers;
+std::map<int, std::vector<std::pair<int,int>>> positions;
 
 // ######### RECIEVE MESSAGES ##########
 
@@ -34,6 +38,54 @@ int selectPartyId()
         }
     }
     return roomNumber;
+}
+
+bool verify_players(int partyId)
+{
+    return partyList[partyId].empty();
+}
+
+
+void startGame(
+    int socketFD,
+    std::map<std::string, struct sockaddr_in> &nicknameToIPPort,
+    int partyId
+    )
+{
+    bool players_in_party = verify_players(partyId);
+    int posx = 0;
+
+    while(players_in_party)
+    {
+        pantalla_move(positions[partyId], posx);
+
+        std::string message_play = "P" +
+        completeByteSize(posx, 3) +
+        completeByteSize(charactersOfPlayers[partyId].size(), 2);
+
+        for (int i = 0; i < partyList[partyId].size(); i++)
+        {
+            message_play += charactersOfPlayers[partyId][i] +
+                completeByteSize(positions[partyId][i].first, 3) + 
+                completeByteSize(positions[partyId][i].second, 3);
+
+            for(int j = 0; j < partyList[partyId].size(); j++)
+            {
+                if(j != i)
+                    message_play += charactersOfPlayers[partyId][j] +
+                    completeByteSize(positions[partyId][j].first, 3) + 
+                    completeByteSize(positions[partyId][j].second, 3);
+            }
+
+            sendto(socketFD, message_play.c_str(), message_play.size(),
+                0,
+            (struct sockaddr *) &nicknameToIPPort[partyList[partyId][i]], sizeof(struct sockaddr));
+        }
+
+        players_in_party = verify_players(partyId);
+    }
+
+    std::cout << "[!] Game with "<< partyId << " is finished\n";
 }
 
 void createSpaceParty(int socketFD,
@@ -61,6 +113,10 @@ void createSpaceParty(int socketFD,
 
     partyList[partyId].push_back(nickname);
     generateCharacter(charactersOfPlayers[partyId]);
+    partyNicknamesToIndex[nickname] = 0;
+    int naveX = 10;
+    int naveY = 13; 
+    positions[partyId].push_back({naveX, naveY});
 
     std::string message_create = "C" + completeByteSize(partyId, 2);
 
@@ -70,8 +126,7 @@ void createSpaceParty(int socketFD,
 
     std::cout << "[+] Se creo party id: " << partyId << " para " << nickname <<"\n";
 
-
-    std::thread(startGame, partyId).detach();
+    std::thread(startGame, socketFD, std::ref(nicknameToIPPort), partyId).detach();
 
     std::cout << "[+] Juego iniciado\n";
 }
@@ -139,31 +194,14 @@ void joinToParty(int socketFD,
         return;
     }
 
+    partyNicknamesToIndex[nickname_player] = partyList[ID].size();
     partyList[ID].push_back(nickname_player);
     generateCharacter(charactersOfPlayers[ID]);
+    int naveX = 10;
+    int naveY = 13; 
+    positions[ID].push_back({naveX, naveY});
 
     std::cout <<  "[+] Starting game in party " << ID << " to " << nickname_player << std::endl;
-}
-
-int verifyWinner(int id) {
-
-    int jugadaJugador1 = partyPlays[id][0];
-    int jugadaJugador2 = partyPlays[id][1];
-
-    if (jugadaJugador1 == jugadaJugador2) {
-        // Empate
-        return 0;
-    } else if (
-        (jugadaJugador1 == 1 && jugadaJugador2 == 3) || // Piedra vs. Tijeras
-        (jugadaJugador1 == 2 && jugadaJugador2 == 1) || // Papel vs. Piedra
-        (jugadaJugador1 == 3 && jugadaJugador2 == 2)    // Tijeras vs. Papel
-    ) {
-        // Jugador 1 gana
-        return 1;
-    } else {
-        // Jugador 2 gana
-        return 2;
-    }
 }
 
 void receivePlay(int socketFD,
@@ -181,89 +219,73 @@ void receivePlay(int socketFD,
     std::string nickname = message.substr(init, sizeNick);
     init += sizeNick;
 
-    std::string size_id = message.substr(init, 2); 
+    std::string party_id = message.substr(init, 2); 
 
-    int sizeId = stoi(size_id);
+    int partyId = stoi(party_id);
     init += 2;
 
-    std::string id = message.substr(init, sizeId);
-    int ID = stoi(id);
-    init += sizeId;    
+    std::string pos_x = message.substr(init, 3);
+    int posX = stoi(pos_x);
+    init += 3;
 
-    std::string play = message.substr(init, 1);
-    int Play = stoi(play);
+    std::string pos_y = message.substr(init, 3);
+    int posY = stoi(pos_y);
 
-    partyPlays[ID].push_back(Play); 
 
-    std::cout << "[+] Play received: " << play << std::endl;
-    
+    // buscar jugador
+    int index = partyNicknamesToIndex[nickname];
 
-    if(partyPlays[ID].size() == 2)
-    {
-        std::string message_data = "R";
-        int winnerIndex = verifyWinner(ID);
-        std::string winnerNickname;
-        if (winnerIndex == 1)
-        {   winnerNickname = partyList[ID].first;
-            message_data += completeByteSize(winnerNickname.size() , 2) + winnerNickname;
-        }
-        else if(winnerIndex == 2)
-        {
-            winnerNickname = partyList[ID].second;
-            message_data += completeByteSize(winnerNickname.size() , 2) + winnerNickname;
-        }
-        else
-        {
-            message_data += "00"; // sin ganador
-        }
-
-        std::string playerOne = partyList[ID].first;
-        std::string playerTwo = partyList[ID].second;
-
-        sendto(socketFD, message_data.c_str(), message_data.size(),
-            0,
-        (struct sockaddr *) &nicknameToIPPort[playerOne], sizeof(struct sockaddr));
-        
-        // send start playing message to player Two
-        
-        sendto(socketFD, message_data.c_str(), message_data.size(),
-            0,
-        (struct sockaddr *) &nicknameToIPPort[playerTwo], sizeof(struct sockaddr));
-
-        // eliminar party 
-
-        auto party = partyList.find(ID);
-        partyList.erase(party);
-
-        auto playParty = partyPlays.find(ID);
-        partyPlays.erase(playParty);
-    }
+    positions[partyId][index] = {posX, posY};
 }
 
-void startGame(int partyId)
+void exitPlayer(
+    int socketFD,
+    struct sockaddr_in client_addr,
+    std::map<std::string, struct sockaddr_in> &nicknameToIPPort,
+    std::string message
+)
 {
+    
+    int init = 1;
+    std::string size_nick = message.substr(init, 2);
 
-    // to do.. send player game
-    while(true)
-    {
+    int sizeNick = stoi(size_nick);
+    init += 2;
 
+    std::string nickname = message.substr(init, sizeNick);
+    init += sizeNick;
 
-        for (const auto& player : partyList[partyId])
-        {
-            
-            std::string message_start_one = "P" + completeByteSize(playerTwo.size(), 2) + playerTwo;
-            sendto(socketFD, message_start_one.c_str(), message_start_one.size(),
-                0,
-            (struct sockaddr *) &nicknameToIPPort[playerOne], sizeof(struct sockaddr));
-        
-        }
+    std::string party_id = message.substr(init, 2); 
 
-        
+    int partyId = stoi(party_id);
+    init += 2;
 
 
+    // eliminar jugador del juego
+
+
+    int index = partyNicknamesToIndex[nickname];
+
+    partyList[partyId].erase(partyList[partyId].begin() + index);
+
+    charactersOfPlayers[partyId].erase(charactersOfPlayers[partyId].begin() + index);
+
+    positions[partyId].erase(positions[partyId].begin() + index);
+
+
+    auto it = partyNicknamesToIndex.find(nickname);
+    if (it != partyNicknamesToIndex.end()) {
+        partyNicknamesToIndex.erase(it);
     }
 
-}
+    std::string message_exit = "R00";
 
+    sendto(socketFD, message_exit.c_str(), message_exit.size(),
+        0,
+    (struct sockaddr *) &client_addr, sizeof(struct sockaddr));
+
+
+    std::cout << "[-] Jugador " << nickname <<" retirado del juego\n";
+}
 
 // ######### END RECIEVE MESSAGES ##########
