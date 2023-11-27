@@ -56,18 +56,11 @@ void handle_commands(std::string nickname, int socketFD, struct sockaddr_in serv
       {
          if(!game_created)
          {
-            joinSpaceParty(command.substr(14, command.size()), socketFD, server_protocols, nickname);
+            joinSpaceParty(command.substr(11, command.size()), socketFD, server_protocols, nickname);
          }
          else{
             std::cout << "\n [!] You has been created a game, you cant join!\n"; 
          }
-      }
-      else if(command.substr(0, 6) =="play, ")
-      {
-         if(in_game)
-            sendYankenpoPlay(command.substr(6, command.size()), socketFD, server_protocols, nickname);
-         else 
-            std::cout << " \n [!] The game has not started yet\n";
       }
       else
          sendMessage(command, socketFD, server_protocols, nickname);
@@ -97,14 +90,12 @@ void ReceiveMessages(std::string nickname, int socketFD, struct sockaddr_in serv
          getListUsers(message);
       else if(buffer[0] == 'M')        // --> Read Message
          obtainingMessage(message);
-      else if(buffer[0] == 'Y')        // --> Get Room ID
+      else if(buffer[0] == 'C')        // --> Get Room ID
          getIdParty(message);
       else if(buffer[0] == 'G')        // --> Get List of Parties
          getListParties(message);
       else if(buffer[0] == 'P')        // --> Start Game
-         startingPlay(message);
-      else if(buffer[0] == 'R')
-         getResult(nickname, message);
+         startingPlay(message, socketFD, server_protocols, nickname);
    }
 }
 

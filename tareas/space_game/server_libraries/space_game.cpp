@@ -42,7 +42,7 @@ int selectPartyId()
 
 bool verify_players(int partyId)
 {
-    return partyList[partyId].empty();
+    return !partyList[partyId].empty();
 }
 
 
@@ -76,6 +76,8 @@ void startGame(
                     completeByteSize(positions[partyId][j].first, 3) + 
                     completeByteSize(positions[partyId][j].second, 3);
             }
+
+            message_play.resize(1024, '\0');
 
             sendto(socketFD, message_play.c_str(), message_play.size(),
                 0,
@@ -119,6 +121,8 @@ void createSpaceParty(int socketFD,
     positions[partyId].push_back({naveX, naveY});
 
     std::string message_create = "C" + completeByteSize(partyId, 2);
+
+    message_create.resize(1024, '\0');
 
     sendto(socketFD, message_create.c_str(), message_create.size(),
         0,
@@ -263,6 +267,10 @@ void exitPlayer(
 
     // eliminar jugador del juego
 
+    auto it = partyNicknamesToIndex.find(nickname);
+    if (it == partyNicknamesToIndex.end()) {
+        return;
+    }
 
     int index = partyNicknamesToIndex[nickname];
 
@@ -272,13 +280,11 @@ void exitPlayer(
 
     positions[partyId].erase(positions[partyId].begin() + index);
 
-
-    auto it = partyNicknamesToIndex.find(nickname);
-    if (it != partyNicknamesToIndex.end()) {
-        partyNicknamesToIndex.erase(it);
-    }
+    partyNicknamesToIndex.erase(it);
 
     std::string message_exit = "R00";
+
+    message_exit.resize(1024,'\0');
 
     sendto(socketFD, message_exit.c_str(), message_exit.size(),
         0,
