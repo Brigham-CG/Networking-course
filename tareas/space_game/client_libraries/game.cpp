@@ -1,9 +1,27 @@
 #include <ncurses.h>
- 
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+#include <vector>
+#include <utility>
+
+#include <string>
+
+#include "../tools/tools.cpp"
+
+
 #define TICKRATE 250
  
 #define WORLD_WIDTH 112
 #define WORLD_HEIGHT 26
+
+using namespace std;
 
 int posx = 0;
 
@@ -37,18 +55,141 @@ char pantalla[26][224]= {{'\\',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','
 
 int naveX = 10;
 int naveY = 13;
+//char playerchar;
+
+vector<char> caracteresJugadores;
+vector<pair<int, int>> posicionesJugadores;
  
 enum direction { UP, DOWN, RIGHT, LEFT };
  
-typedef struct spart {
-    int x;
-    int y;
-} snakeypart;
+void recibirDatosJuego(int socketFD, struct sockaddr_in server_protocols) {
+    char buffer[1025];
+    int nBytes;
+
+    socklen_t addr_len = sizeof(struct sockaddr);
+    nBytes = recvfrom(socketFD,
+         buffer, 1024,
+        0,
+        (struct sockaddr *)&server_protocols, &addr_len);
+
+    buffer[nBytes] = '\0'; 
+
+    std::string message = buffer;
+
+    // --> Input: P01001O020001 
+    // * P: Play
+    // * 010: La posicion del eje X del juego (posx)
+    // * 01: La cantidad de jugadores
+    // * O: Caracter del jugador
+    // * 020: La posicion del eje X del jugador (naveX)
+    // * 001: La posicion del eje Y del jugador (naveY)
+
+    int init = 1;
+
+    std::string posx_str = message.substr(init, 3);
+    posx = stoi(posx_str);
+    
+    init += 3;
+
+    std::string cant_players_str = message.substr(init, 2);
+    int cant_players = stoi(cant_players_str);
+
+    init += 2;
+
+    for(int i = 0; i < cant_players; i++)
+    {
+        std::string player_char = message.substr(init, 1);
+        // playerchar = player_char[0];
+        caracteresJugadores.push_back(player_char[0]);
+
+        init += 1;
+
+        std::string naveX_str = message.substr(init, 3);
+        int navex = stoi(naveX_str);
+
+        init += 3;
+
+        std::string naveY_str = message.substr(init, 3);
+        int navey = stoi(naveY_str);
+        init += 3;
+
+        posicionesJugadores.push_back({navex, navey});
+    }
+
+}
  
-int pantalla_move(WINDOW *win, int direction,int naveY, int naveX);
+void pantalla_move(WINDOW *win, int direction, 
+    int socketFD, struct sockaddr_in server_protocols, string nickname, string idParty
+    ) {
  
-int main(int argc, char *argv[]) {	
+    wclear(win);
  
+    //----
+    
+    for (int y=0;y<26;y++){
+        for (int x=posx;x<112+posx;x++){
+            mvwaddch(win, y, x-posx, pantalla[y][x]);
+        }
+    }
+
+    // NAVE
+        
+        switch (direction) {
+        case UP:
+            naveY--;
+            break;
+        case DOWN:
+            naveY++;
+            break;
+        case RIGHT:
+            naveX++;
+            break;
+        case LEFT:
+            naveX--;
+            break;
+        default:
+            break;
+    }
+
+    // enviamos nueva posicion al server 
+
+    // P05Angel01020001
+
+    std::string position_payload = "P" +
+        completeByteSize(nickname.size(), 2) + nickname +
+        completeByteSize(stoi(idParty), 2) + 
+        completeByteSize(naveX, 3) +
+        completeByteSize(naveY, 3);
+
+    position_payload.resize(1024, '\0');
+
+    sendto(socketFD, position_payload.c_str(), position_payload.size(), 
+        0,
+        (struct sockaddr *)&server_protocols, sizeof(struct sockaddr));
+
+    recibirDatosJuego(socketFD, server_protocols);
+
+    // iteras posiciones y el caracter
+    for(int i = 0; i < caracteresJugadores.size(); i++)
+    {
+        mvwaddch(win, posicionesJugadores[i].second, posicionesJugadores[i].first, caracteresJugadores[i]);
+    }
+    
+    //mvprintw(naveY,naveX-5,"Y: %d X: %d ",naveY,naveX);
+    
+    caracteresJugadores.clear();
+    posicionesJugadores.clear();
+ 
+    box(win, 0 , 0);
+    move(0,0);
+    wrefresh(win);
+ 
+}
+ 
+
+int juego(int socketFD, struct sockaddr_in server_protocols, string nickname, string idParty) {	
+
+
     WINDOW *space_world;
     int offsetx, offsety, i, ch;
  
@@ -73,9 +214,41 @@ int main(int argc, char *argv[]) {
 
  
     int cur_dir = RIGHT;
- 
-    while ((ch = getch()) != 'x') {
+    
+
+    while (true) {
+        ch = getch();
         
+        if(ch == 'x') // peticion de salida
+        {
+            // --> input: r05angel01 request
+            break;
+            int init = 0;
+
+            std::string requestMsg = "R" + completeByteSize(nickname.size(), 2) + nickname + completeByteSize(stoi(idParty), 2);
+
+            requestMsg.resize(1024, '\0');
+
+            sendto( socketFD,
+                    requestMsg.c_str(), requestMsg.size(),
+                    0,
+                    (struct sockaddr *) &server_protocols, sizeof(struct sockaddr)
+            );
+
+            // //r00 response
+            // char buffer[1025];
+            // int nBytes;
+            // socklen_t addr_len = sizeof(struct sockaddr);
+            // nBytes = recvfrom(  socketFD,
+            //                     buffer, 1024,
+            //                     MSG_WAITALL,
+            //                     (struct sockaddr *)&server_protocols, &addr_len);
+
+            // buffer[nBytes] = '\0'; 
+
+            // if(buffer[0] == 'R')
+
+        }    
 
         if(ch != ERR) {
             switch(ch) {
@@ -96,7 +269,9 @@ int main(int argc, char *argv[]) {
             }
  
         }
-        pantalla_move(space_world, cur_dir,naveY, naveX);
+        // vector caracter, vector-pair posiciones
+        pantalla_move(space_world, cur_dir, socketFD, server_protocols, nickname, idParty);
+        // recepcionar datos servidor
 
     }
  
@@ -106,47 +281,4 @@ int main(int argc, char *argv[]) {
  
     return 0;
  
-}
- 
-int pantalla_move(WINDOW *win, int direction,int naveYY, int naveXX) {
- 
-    wclear(win);
- 
-//----
-    
-    for (int y=0;y<26;y++){
-        for (int x=posx;x<112+posx;x++){
-            mvwaddch(win, y, x-posx, pantalla[y][x]);
-        }
-    }
-    posx++;
-    if (posx > 112)
-        posx=0;
-
-    // NAVE
-        switch (direction) {
-        case UP:
-            naveY--;
-            break;
-        case DOWN:
-            naveY++;
-            break;
-        case RIGHT:
-            naveX++;
-            break;
-        case LEFT:
-            naveX--;
-            break;
-        default:
-            break;
-    }
-    mvwaddch(win, naveY, naveX, 'O');
-    //mvprintw(naveY,naveX-5,"Y: %d X: %d ",naveY,naveX);
-  
- 
-    box(win, 0 , 0);
-    move(0,0);
-    wrefresh(win);
- 
-    return 0;
 }
